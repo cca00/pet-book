@@ -1,0 +1,77 @@
+  trigger:
+
+  - master
+  
+  pool:
+    vmImage: 'ubuntu-latest'
+  
+  steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '12.x'
+      checkLatest: true
+  
+  - task: CmdLine@2
+    displayName: 'Build'
+    inputs:
+      script: |
+        npm install -g @angular/cli
+        npm install
+        ng build --prod
+
+  - task: CmdLine@2
+    displayName: 'Unit Tests'
+    inputs:
+      script: 'npm run test-ci'
+  
+  - task: SonarCloudPrepare@1
+    inputs:
+      SonarCloud: 'sonarCloud'
+      organization: 'mcmejia1'
+      scannerMode: 'CLI'
+      configMode: 'file'
+  
+  - task: SonarCloudAnalyze@1
+    displayName: 'Anlisis de código estático'
+  
+  - task: SonarCloudPublish@1
+    displayName: 'Quality Gate'
+    inputs:
+      pollingTimeoutSec: '300'
+
+  - task: Docker@2
+    displayName: 'Build Docker Image'
+    inputs:
+      containerRegistry: 'Docker'
+      repository: 'mcmejia/pet-book'
+      command: 'build'
+      Dockerfile: '**/Dockerfile'
+  
+  - task: Docker@2
+    displayName: 'Push Docker Image'
+    inputs:
+      containerRegistry: 'Docker Hub'
+      repository: 'mcmejia/pet-book'
+      command: 'push'
+  - task: ArchiveFiles@2
+    inputs:
+      rootFolderOrFile: 'dist'
+      includeRootFolder: true
+      archiveType: 'zip'
+      archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+      replaceExistingArchive: true
+  
+  - task: PublishBuildArtifacts@1
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'drop'
+      publishLocation: 'Container'
+      
+  - task: S3Upload@1
+    inputs:
+      awsCredentials: 'AWS S3'
+      regionName: 'us-east-1'
+      bucketName: 'pet-book-deploy-circleci'
+      sourceFolder: '$(Build.ArtifactStagingDirectory)'
+      globExpressions: '*.zip'
+      targetFolder: 'artifact_azure'
